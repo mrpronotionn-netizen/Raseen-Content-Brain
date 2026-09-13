@@ -1,0 +1,6 @@
+flask
+schedule
+python-dotenv
+requests
+telegram
+groq
