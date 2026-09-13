@@ -29,18 +29,24 @@ def home():
 
 @app.route('/webhook', methods=['POST'])
 def telegram_webhook():
-    """استقبال تحديثات تيليجرام فوراً عبر الويب هوك ومعالجتها في الخلفية"""
+    """استقبال تحديثات تيليجرام ومعالجتها وإرسال رد مباشر"""
     json_data = request.get_json()
     if json_data:
         try:
-            # معالجة الرسالة الواردة بشكل فوري غير متزامن
-            threading.Thread(target=process_single_update, args=(json_data,), daemon=True).start()
+            message = json_data.get("message", {})
+            text = message.get("text", "").strip()
+            chat_id = message.get("chat", {}).get("id")
+            
+            if text and chat_id:
+                print(f"📥 [الرسالة المستلمة]: {text}")
+                # معالجة الرسالة في خيط منفصل لضمان استجابة سريعة للـ Webhook
+                threading.Thread(target=process_single_update, args=(json_data,), daemon=True).start()
         except Exception as e:
             print(f"⚠️ [Webhook Error]: {e}")
     return "OK", 200
 
 def process_single_update(update):
-    """معالجة رسالة مفردة قادمة من الويب هوك"""
+    """معالجة رسالة مفردة قادمة من الويب هوك وتشغيل خط الإنتاج"""
     message = update.get("message", {})
     text = message.get("text", "").strip()
     chat_id = str(message.get("chat", {}).get("id"))
@@ -49,8 +55,6 @@ def process_single_update(update):
         return
 
     if text:
-        print(f"\n📩 [طلب جديد عبر الويب هوك]: {text}")
-        
         idea_title = text.replace("/create", "").strip()
         if not idea_title or text == "/start":
             send_telegram_message(
