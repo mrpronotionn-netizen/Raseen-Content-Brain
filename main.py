@@ -13,6 +13,7 @@ sys.path.insert(0, BASE_DIR)
 
 from telegram_bot import send_telegram_message
 import run_pipeline
+from run_pipeline import run_background_research, process_daily_scheduled_video
 from video_engine.generator import VideoProductionEngine
 from tiktok_uploader import upload_video_to_tiktok
 
@@ -39,7 +40,6 @@ def telegram_webhook():
             
             if text and chat_id:
                 print(f"📥 [الرسالة المستلمة]: {text}")
-                # معالجة الرسالة في خيط منفصل لضمان استجابة سريعة للـ Webhook
                 threading.Thread(target=process_single_update, args=(json_data,), daemon=True).start()
         except Exception as e:
             print(f"⚠️ [Webhook Error]: {e}")
