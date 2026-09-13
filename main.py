@@ -30,19 +30,31 @@ def home():
 
 @app.route('/webhook', methods=['POST'])
 def telegram_webhook():
-    """استقبال تحديثات تيليجرام ومعالجتها وإرسال رد مباشر"""
-    json_data = request.get_json()
-    if json_data:
-        try:
+    """فحص وطباعة كل ما يرد من تيليجرام لتشخيص المشكلة والرد المباشر"""
+    try:
+        json_data = request.get_json()
+        print(f"🔥 [البيانات الخام الواردة]: {json_data}")
+        
+        if json_data:
             message = json_data.get("message", {})
-            text = message.get("text", "").strip()
             chat_id = message.get("chat", {}).get("id")
+            text = message.get("text", "").strip()
             
-            if text and chat_id:
-                print(f"📥 [الرسالة المستلمة]: {text}")
+            print(f"💬 [معرف المرسل]: {chat_id} | النص: {text}")
+            
+            if chat_id and text:
+                # رد فوري مباشر للتأكد من نجاح التوصيل
+                token = "8960674717:AAFvKIoHB4Ajz7h2rt2sqO2tDRFkipbkinw"
+                requests.post(
+                    f"https://api.telegram.org/bot{token}/sendMessage",
+                    json={"chat_id": chat_id, "text": f"✅ وصلني طلبك يا بشمهندس: {text}"}
+                )
+                
+                # تشغيل خط الإنتاج في الخلفية
                 threading.Thread(target=process_single_update, args=(json_data,), daemon=True).start()
-        except Exception as e:
-            print(f"⚠️ [Webhook Error]: {e}")
+    except Exception as e:
+        print(f"⚠️ [خطأ في تحليل الويب هوك]: {e}")
+        
     return "OK", 200
 
 def process_single_update(update):
@@ -57,10 +69,6 @@ def process_single_update(update):
     if text:
         idea_title = text.replace("/create", "").strip()
         if not idea_title or text == "/start":
-            send_telegram_message(
-                "👋 **أهلاً بك في نظام رصين PRO للتحكم الذكي**\n\n"
-                "💡 أرسل لي أي فكرة مباشرة وسأقوم بإنتاجها ورفعها لـ TikTok Inbox فوراً!"
-            )
             return
 
         send_telegram_message(f"⚡ **[طلب يدوي مقبول]**\nجاري تشغيل خط الإنتاج لفكرتك:\n*{idea_title}*")
