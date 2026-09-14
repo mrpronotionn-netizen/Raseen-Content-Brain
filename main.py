@@ -22,14 +22,12 @@ CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 app = Flask(__name__)
 
-# تخزين مؤقت لآخر فيديو تم إنتاجه
-TEMP_STORAGE = {"latest_video_path": None, "latest_title": None}
-# لمنع تكرار معالجة نفس الرسالة
+TEMP_STORAGE = {"latest_video_path": None, "latest_title": None, "latest_video_url": None}
 PROCESSED_UPDATES = set()
 
 @app.route('/')
 def home():
-    return "Raseen PRO Core is Live!", 200
+    return "Raseen PRO Cloud-Linked Engine is Live!", 200
 
 @app.route('/webhook', methods=['POST'])
 def telegram_webhook():
@@ -39,16 +37,28 @@ def telegram_webhook():
         if update_id in PROCESSED_UPDATES:
             return "OK", 200
         PROCESSED_UPDATES.add(update_id)
-        # الاحتفاظ فقط بأحدث 100 رسالة في الذاكرة لمنع الامتلاء
         if len(PROCESSED_UPDATES) > 100:
             PROCESSED_UPDATES.pop()
 
         threading.Thread(target=handle_update_safely, args=(json_data,), daemon=True).start()
     return "OK", 200
 
+def upload_to_free_cloud(file_path):
+    """رفع الفيديو لسحابة مجانية مؤقتة لتوليد رابط تحميل ومعاينة مباشر"""
+    try:
+        url = "https://catbox.moe/user/api.php"
+        with open(file_path, 'rb') as f:
+            files = {'fileToUpload': f}
+            data = {'reqtype': 'fileupload'}
+            response = requests.post(url, data=data, files=files)
+            if response.status_code == 200 and response.text.startswith('http'):
+                return response.text.strip()
+    except Exception as e:
+        print(f"⚠️ Cloud Upload Error: {e}")
+    return None
+
 def handle_update_safely(update):
     try:
-        # 1. معالجة الضغط على الأزرار
         if "callback_query" in update:
             query = update["callback_query"]
             data = query.get("data")
@@ -61,24 +71,24 @@ def handle_update_safely(update):
                 title = TEMP_STORAGE.get("latest_title", "Raseen Video")
 
                 if video_path and os.path.exists(video_path):
-                    send_telegram_message("📤 جاري رفع الفيديو الآن إلى تيك توك...")
+                    send_telegram_message("📤 جاري رفع الفيديو إلى تيك توك...")
                     success = upload_video_to_tiktok(video_path, title=title, auto_publish=False)
                     if success:
                         send_telegram_message(f"✅ **تم النشر بنجاح!**\nفيديو (*{title}*) جاهز في TikTok Inbox.")
                     else:
                         send_telegram_message("❌ فشل الرفع إلى تيك توك.")
                 else:
-                    send_telegram_message("⚠️ انتهت صلاحية مسار الفيديو على السيرفر، يرجى إعادة الطلب.")
+                    send_telegram_message("⚠️ مسار الفيديو غير موجود، يرجى إعادة الطلب.")
 
             elif data == "edit_script":
-                send_telegram_message("✍️ أرسل التعديل أو العنوان الجديد في رسالة منفصلة وسأقوم بإعادة توليده فوراً.")
+                send_telegram_message("✍️ أرسل التعديل أو العنوان الجديد في رسالة وسأقوم بإعادة توليده فوراً.")
 
             elif data == "cancel_publish":
                 TEMP_STORAGE["latest_video_path"] = None
+                TEMP_STORAGE["latest_video_url"] = None
                 send_telegram_message("❌ تم إلغاء العملية.")
             return
 
-        # 2. معالجة النصوص الواردة
         message = update.get("message", {})
         text = message.get("text", "").strip()
         chat_id = str(message.get("chat", {}).get("id"))
@@ -92,16 +102,14 @@ def handle_update_safely(update):
         idea_title = text.replace("/create", "").strip()
         if not idea_title or text == "/start":
             send_telegram_message(
-                "👋 **أهلاً بك في نظام رصين PRO**\n\n"
-                "💡 أرسل لي فكرة الفيديو وسأقوم بتوليدها ومعالجتها بالكامل ثم أرسل لك أزرار التحكم."
+                "👋 **أهلاً بك في رصين PRO**\n\n"
+                "💡 أرسل فكرة الفيديو وسأقوم بتوليدها، رفعها للسحابة، وإرسال رابط المعاينة وأزرار التحكم."
             )
             return
 
-        send_telegram_message(f"⏳ **[بدء المعالجة الحقيقية]**\nجاري الآن هندسة وصنع الفيديو لفكرة:\n*{idea_title}*\n*(يرجى الانتظار، سيتم إرسال الأزرار فور اكتمال الملف)*")
+        send_telegram_message(f"⏳ **[جاري العمل والرفع]**\nجاري إنتاج الفيديو ورفعه للسحابة لفكرة:\n*{idea_title}*\n*(يرجى الانتظار دقيقة حتى يكتمل الرفع...)*")
 
-        print(f"🚀 [Pipeline Started] Generating video for: {idea_title}")
-        
-        # تنفيذ عملية التوليد الفعلي
+        # توليد الفيديو
         video_path = None
         try:
             pipeline_func = getattr(run_pipeline, 'run_raseen_pipeline', None) or getattr(run_pipeline, 'run_pipeline', None)
@@ -118,9 +126,7 @@ def handle_update_safely(update):
         except Exception as e:
             print(f"⚠️ Pipeline Error: {e}")
 
-        # طريقة احتياطية للتوليد المباشر إن لم يرجع مسار من البايبرلاين
         if not video_path or not os.path.exists(str(video_path)):
-            print("🔄 [Fallback Engine] محاولة التوليد عبر محرك الفيديو المباشر...")
             try:
                 engine = VideoProductionEngine()
                 prod_res = engine.generate_video_assets(script_title=idea_title, script_body=idea_title)
@@ -129,37 +135,43 @@ def handle_update_safely(update):
             except Exception as e:
                 print(f"⚠️ Engine Error: {e}")
 
-        # التحقق النهائي وإرسال الأزرار
         if video_path and os.path.exists(str(video_path)):
+            # رفع الفيديو للسحابة المجانية للحصول على رابط مباشر
+            send_telegram_message("☁️ جاري رفع الفيديو إلى السحابة لتوليد رابط المعاينة...")
+            video_url = upload_to_free_cloud(str(video_path))
+
             TEMP_STORAGE["latest_video_path"] = str(video_path)
             TEMP_STORAGE["latest_title"] = idea_title
+            TEMP_STORAGE["latest_video_url"] = video_url
 
-            keyboard = {
-                "inline_keyboard": [
-                    [
-                        {"text": "✅ موافقة ونشر", "callback_data": "approve_publish"},
-                        {"text": "✏️ تعديل", "callback_data": "edit_script"}
-                    ],
-                    [
-                        {"text": "❌ إلغاء", "callback_data": "cancel_publish"}
-                    ]
+            keyboard_buttons = [
+                [
+                    {"text": "✅ موافقة ونشر", "callback_data": "approve_publish"},
+                    {"text": "✏️ تعديل", "callback_data": "edit_script"}
+                ],
+                [
+                    {"text": "❌ إلغاء", "callback_data": "cancel_publish"}
                 ]
-            }
+            ]
+
+            # إذا تم توليد الرابط بنجاح، نضيف زر معاينة مباشرة
+            if video_url:
+                keyboard_buttons.insert(0, [{"text": "👀 معاينة وتحميل الفيديو", "url": video_url}])
+
+            keyboard = {"inline_keyboard": keyboard_buttons}
             
             payload = {
                 "chat_id": chat_id,
-                "text": f"🎬 **تم إنتاج الفيديو بنجاح تام!**\nالعنوان: *{idea_title}*\n\nاختر الإجراء:",
+                "text": f"🎬 **تم إنتاج الفيديو ورفعه بنجاح!**\nالعنوان: *{idea_title}*\n\nاختر الإجراء المطلوب:",
                 "parse_mode": "Markdown",
                 "reply_markup": keyboard
             }
             requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json=payload)
-            print(f"✅ [Success] Video generated and buttons sent for: {idea_title}")
         else:
-            send_telegram_message("❌ فشل توليد الفيديو أو أن الملف الناتج غير موجود. يرجى مراجعة Logs في Render.")
-            print(f"❌ [Failed] No valid video path found for: {idea_title}")
+            send_telegram_message("❌ فشل توليد الفيديو، يرجى مراجعة سجلات Render.")
 
     except Exception as e:
-        print(f"⚠️ Critical Error in handler: {e}")
+        print(f"⚠️ Critical Error: {e}")
 
 def auto_set_webhook():
     time.sleep(3)
