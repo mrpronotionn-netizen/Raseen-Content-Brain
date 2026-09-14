@@ -22,28 +22,37 @@ CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 app = Flask(__name__)
 
-# تخزين مؤقت لإدارة الحالة والأزرار
+# تخزين مؤقت لآخر فيديو تم إنتاجه
 TEMP_STORAGE = {"latest_video_path": None, "latest_title": None}
+# لمنع تكرار معالجة نفس الرسالة
+PROCESSED_UPDATES = set()
 
 @app.route('/')
 def home():
-    return "Raseen PRO Interactive Engine is Alive!", 200
+    return "Raseen PRO Core is Live!", 200
 
 @app.route('/webhook', methods=['POST'])
 def telegram_webhook():
     json_data = request.get_json()
     if json_data:
-        threading.Thread(target=process_telegram_update, args=(json_data,), daemon=True).start()
+        update_id = json_data.get("update_id")
+        if update_id in PROCESSED_UPDATES:
+            return "OK", 200
+        PROCESSED_UPDATES.add(update_id)
+        # الاحتفاظ فقط بأحدث 100 رسالة في الذاكرة لمنع الامتلاء
+        if len(PROCESSED_UPDATES) > 100:
+            PROCESSED_UPDATES.pop()
+
+        threading.Thread(target=handle_update_safely, args=(json_data,), daemon=True).start()
     return "OK", 200
 
-def process_telegram_update(update):
+def handle_update_safely(update):
     try:
-        # 1. التعامل مع الأزرار التفاعلية
+        # 1. معالجة الضغط على الأزرار
         if "callback_query" in update:
             query = update["callback_query"]
             data = query.get("data")
             callback_query_id = query.get("id")
-            chat_id = str(query["message"]["chat"]["id"])
 
             requests.post(f"https://api.telegram.org/bot{TOKEN}/answerCallbackQuery", json={"callback_query_id": callback_query_id})
 
@@ -59,17 +68,17 @@ def process_telegram_update(update):
                     else:
                         send_telegram_message("❌ فشل الرفع إلى تيك توك.")
                 else:
-                    send_telegram_message("⚠️ ملف الفيديو غير موجود على السيرفر، يرجى إعادة الإنتاج.")
+                    send_telegram_message("⚠️ انتهت صلاحية مسار الفيديو على السيرفر، يرجى إعادة الطلب.")
 
             elif data == "edit_script":
-                send_telegram_message("✍️ يرجى إرسال الفكرة أو التعديل الجديد بالرد المباشر، وسأقوم بإعادة توليد الفيديو فوراً بناءً عليها.")
+                send_telegram_message("✍️ أرسل التعديل أو العنوان الجديد في رسالة منفصلة وسأقوم بإعادة توليده فوراً.")
 
             elif data == "cancel_publish":
                 TEMP_STORAGE["latest_video_path"] = None
-                send_telegram_message("❌ **تم إلغاء العملية وحذف المسار المؤقت.**")
+                send_telegram_message("❌ تم إلغاء العملية.")
             return
 
-        # 2. استقبال الرسائل والأفكار
+        # 2. معالجة النصوص الواردة
         message = update.get("message", {})
         text = message.get("text", "").strip()
         chat_id = str(message.get("chat", {}).get("id"))
@@ -83,62 +92,74 @@ def process_telegram_update(update):
         idea_title = text.replace("/create", "").strip()
         if not idea_title or text == "/start":
             send_telegram_message(
-                "👋 **أهلاً بك في رصين PRO**\n\n"
-                "💡 أرسل لي أي فكرة وسأقوم بمعالجتها وإنتاج الفيديو بالكامل ثم أرسل لك أزرار التحكم."
+                "👋 **أهلاً بك في نظام رصين PRO**\n\n"
+                "💡 أرسل لي فكرة الفيديو وسأقوم بتوليدها ومعالجتها بالكامل ثم أرسل لك أزرار التحكم."
             )
             return
 
-        send_telegram_message(f"⏳ **[جاري العمل الفعلي]**\nيتم الآن توليد وإنتاج أصول الفيديو لفكرة:\n*{idea_title}*\n*(قد تستغرق العملية دقيقة أو دقيقتين، يرجى الانتظار...)*")
+        send_telegram_message(f"⏳ **[بدء المعالجة الحقيقية]**\nجاري الآن هندسة وصنع الفيديو لفكرة:\n*{idea_title}*\n*(يرجى الانتظار، سيتم إرسال الأزرار فور اكتمال الملف)*")
 
-        # تشغيل البايبرلاين والانتظار حتى انتهاء التوليد الحقيقي
-        pipeline_func = getattr(run_pipeline, 'run_raseen_pipeline', None) or getattr(run_pipeline, 'run_pipeline', None)
-        pipeline_result = {}
-        if pipeline_func:
-            pipeline_result = pipeline_func(
-                topic_title=idea_title,
-                raw_content=f"محتوى مخصص: {idea_title}",
-                source_platform="Telegram Dashboard",
-                engagement_score=98,
-                is_emergency=True
-            )
+        print(f"🚀 [Pipeline Started] Generating video for: {idea_title}")
+        
+        # تنفيذ عملية التوليد الفعلي
+        video_path = None
+        try:
+            pipeline_func = getattr(run_pipeline, 'run_raseen_pipeline', None) or getattr(run_pipeline, 'run_pipeline', None)
+            if pipeline_func:
+                res = pipeline_func(
+                    topic_title=idea_title,
+                    raw_content=f"محتوى: {idea_title}",
+                    source_platform="Telegram",
+                    engagement_score=98,
+                    is_emergency=True
+                )
+                if isinstance(res, dict):
+                    video_path = res.get("video_path")
+        except Exception as e:
+            print(f"⚠️ Pipeline Error: {e}")
 
-        video_path = pipeline_result.get("video_path") if isinstance(pipeline_result, dict) else None
-        if not video_path:
-            video_engine = VideoProductionEngine()
-            prod_res = video_engine.generate_video_assets(script_title=idea_title, script_body=idea_title)
-            video_path = prod_res.get("video_path")
+        # طريقة احتياطية للتوليد المباشر إن لم يرجع مسار من البايبرلاين
+        if not video_path or not os.path.exists(str(video_path)):
+            print("🔄 [Fallback Engine] محاولة التوليد عبر محرك الفيديو المباشر...")
+            try:
+                engine = VideoProductionEngine()
+                prod_res = engine.generate_video_assets(script_title=idea_title, script_body=idea_title)
+                if isinstance(prod_res, dict):
+                    video_path = prod_res.get("video_path")
+            except Exception as e:
+                print(f"⚠️ Engine Error: {e}")
 
-        # التحقق الحقيقي من أن الفيديو تم إنشاؤه وموجود على المسار
-        if video_path and os.path.exists(video_path):
-            TEMP_STORAGE["latest_video_path"] = video_path
+        # التحقق النهائي وإرسال الأزرار
+        if video_path and os.path.exists(str(video_path)):
+            TEMP_STORAGE["latest_video_path"] = str(video_path)
             TEMP_STORAGE["latest_title"] = idea_title
 
-            # إرسال الأزرار التفاعلية الثلاثة (موافقة، تعديل، إلغاء)
             keyboard = {
                 "inline_keyboard": [
                     [
                         {"text": "✅ موافقة ونشر", "callback_data": "approve_publish"},
-                        {"text": "✏️ تعديل السكربت", "callback_data": "edit_script"}
+                        {"text": "✏️ تعديل", "callback_data": "edit_script"}
                     ],
                     [
-                        {"text": "❌ إلغاء وحذف", "callback_data": "cancel_publish"}
+                        {"text": "❌ إلغاء", "callback_data": "cancel_publish"}
                     ]
                 ]
             }
             
             payload = {
                 "chat_id": chat_id,
-                "text": f"🎬 **تم إنتاج الفيديو بنجاح تام!**\nالعنوان: *{idea_title}*\n\nاختر الإجراء المطلوب:",
+                "text": f"🎬 **تم إنتاج الفيديو بنجاح تام!**\nالعنوان: *{idea_title}*\n\nاختر الإجراء:",
                 "parse_mode": "Markdown",
                 "reply_markup": keyboard
             }
             requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json=payload)
+            print(f"✅ [Success] Video generated and buttons sent for: {idea_title}")
         else:
-            send_telegram_message("❌ فشل عملية توليد الفيديو أو أن الملف غير موجود. يرجى مراجعة سجلات Render.")
+            send_telegram_message("❌ فشل توليد الفيديو أو أن الملف الناتج غير موجود. يرجى مراجعة Logs في Render.")
+            print(f"❌ [Failed] No valid video path found for: {idea_title}")
 
     except Exception as e:
-        print(f"⚠️ [Error]: {e}")
-        send_telegram_message(f"⚠️ حدث خطأ تقني أثناء المعالجة: {str(e)}")
+        print(f"⚠️ Critical Error in handler: {e}")
 
 def auto_set_webhook():
     time.sleep(3)
