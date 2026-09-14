@@ -27,7 +27,7 @@ PROCESSED_UPDATES = set()
 
 @app.route('/')
 def home():
-    return "Raseen PRO TikTok Direct Engine is Alive!", 200
+    return "Raseen PRO Lightweight Controller is Alive!", 200
 
 @app.route('/webhook', methods=['POST'])
 def telegram_webhook():
@@ -54,7 +54,7 @@ def handle_update_safely(update):
 
             if data == "edit_script":
                 TEMP_STORAGE["waiting_for_edit"] = True
-                send_telegram_message("✍️ **وضع التعديل مفعل:**\nاكتب التعديل أو الفكرة الجديدة هنا في تيليجرام، وسأقوم فوراً بإعادة توليد فيديو جديد وإرساله كمسودة لتيك توك.")
+                send_telegram_message("✍️ **وضع التعديل مفعل:**\nاكتب التعديل أو التعديلات المطلوبة للفيديو هنا في تيليجرام، وسأقوم فوراً بإعادة صياغته وإنتاجه كمسودة جديدة لتيك توك.")
 
             elif data == "cancel_process":
                 TEMP_STORAGE["latest_video_path"] = None
@@ -74,8 +74,8 @@ def handle_update_safely(update):
 
         if text == "/start":
             send_telegram_message(
-                "👋 **أهلاً بك في رصين PRO**\n\n"
-                "💡 أرسل فكرة الفيديو وسأقوم بتوليدها ورفعها تلقائياً إلى مسودات تيك توك، مع إتاحة خيار التعديل من هنا إذا احتجت لذلك."
+                "👋 **أهلاً بك في رصين PRO (الوضع الخفيف)**\n\n"
+                "💡 أرسل فكرة الفيديو وسأقوم بتوليدها ومعالجتها وإرسالها مباشرة إلى مسودات تيك توك، مع إتاحة خيار طلب التعديل من هنا بكل سهولة."
             )
             return
 
@@ -83,12 +83,12 @@ def handle_update_safely(update):
         idea_title = text.replace("/create", "").strip()
 
         if is_edit_request:
-            send_telegram_message(f"🔄 **[إعادة التوليد للتعديل]**\nجاري إنتاج فيديو جديد بناءً على طلبك:\n*{idea_title}*")
+            send_telegram_message(f"🔄 **[تطبيق التعديل وإعادة التوليد]**\nجاري إنشاء نسخة محسنة بناءً على ملاحظاتك:\n*{idea_title}*")
             TEMP_STORAGE["waiting_for_edit"] = False
         else:
-            send_telegram_message(f"⏳ **[جاري العمل الفعلي]**\nجاري إنتاج الفيديو ورفعه مباشرة كمسودة إلى تيك توك لفكرة:\n*{idea_title}*")
+            send_telegram_message(f"⏳ **[جاري معالجة الفكرة]**\nجاري إعداد محتوى وفيديو للفكرة:\n*{idea_title}*")
 
-        # 1. توليد الفيديو
+        # معالجة توليد الفيديو بطريقة خفيفة ومستقرة
         video_path = None
         try:
             pipeline_func = getattr(run_pipeline, 'run_raseen_pipeline', None) or getattr(run_pipeline, 'run_pipeline', None)
@@ -114,16 +114,15 @@ def handle_update_safely(update):
             except Exception as e:
                 print(f"⚠️ Engine Error: {e}")
 
-        # 2. الرفع المباشر كمسودة إلى تيك توك
+        # رفع المسودة مباشرة إلى تيك توك
         if video_path and os.path.exists(str(video_path)):
             TEMP_STORAGE["latest_video_path"] = str(video_path)
             TEMP_STORAGE["latest_title"] = idea_title
 
-            send_telegram_message("📤 جاري رفع الفيديو الآن إلى تيك توك (مسودة)...")
+            send_telegram_message("📤 جاري رفع الفيديو كمسودة إلى تيك توك...")
             success = upload_video_to_tiktok(str(video_path), title=idea_title, auto_publish=False)
 
             if success:
-                # إرسال رسالة مع أزرار التحكم في حال رغب المستخدم بتعديله وإعادة إرساله
                 keyboard = {
                     "inline_keyboard": [
                         [
@@ -136,15 +135,15 @@ def handle_update_safely(update):
                 }
                 payload = {
                     "chat_id": chat_id,
-                    "text": f"✅ **تم رفع الفيديو بنجاح إلى TikTok Inbox (مسودة)!**\nالعنوان: *{idea_title}*\n\nيمكنك الآن فتحه من تطبيق تيك توك ومعاينته. إذا أردت تعديله وإعادة إنتاجه، اضغط الزر أدناه:",
+                    "text": f"✅ **تم إرسال الفيديو بنجاح إلى TikTok Inbox (مسودة)!**\nالعنوان: *{idea_title}*\n\nيمكنك معاينته من تطبيق تيك توك الآن. إذا أردت تعديله، اضغط على الزر أدناه:",
                     "parse_mode": "Markdown",
                     "reply_markup": keyboard
                 }
                 requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json=payload)
             else:
-                send_telegram_message("❌ فشل الرفع التلقائي إلى تيك توك. يرجى مراجعة السجلات.")
+                send_telegram_message("❌ حدث خطأ أثناء الرفع إلى تيك توك، يرجى المحاولة لاحقاً.")
         else:
-            send_telegram_message("❌ فشل توليد الفيديو، يرجى مراجعة سجلات النظام.")
+            send_telegram_message("❌ تعذر إتمام توليد الفيديو حالياً، يرجى المحاولة بفكرة أخرى.")
 
     except Exception as e:
         print(f"⚠️ Critical Error: {e}")
