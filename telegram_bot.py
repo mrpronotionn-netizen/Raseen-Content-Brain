@@ -1,104 +1,131 @@
 import os
-import requests
-from dotenv import load_dotenv
+import json
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler
 
-from tiktok_uploader import upload_video_to_tiktok
+# استبدل هذا بالتوكن الخاص ببوك تيليجرام الخاص بك
+TELEGRAM_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
 
-load_dotenv()
+# مسار ملف البيانات أو قائمة العناصر المرسلة
+DATA_FILE = "videos_data.json"
 
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
-def send_telegram_message(text):
-    """إرسال رسالة لتطبيق التلغرام"""
-    if not BOT_TOKEN or not CHAT_ID:
-        return
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": text, "parse_mode": "Markdown"}
-    try:
-        requests.post(url, json=payload, timeout=10)
-    except Exception as e:
-        print(f"⚠️ تعذر إرسال الرسالة: {e}")
-
-def get_telegram_updates(offset=None):
-    """جلب الرسائل القادمة من التلغرام"""
-    if not BOT_TOKEN:
-        return []
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
-    params = {"timeout": 10, "offset": offset}
-    try:
-        response = requests.get(url, params=params, timeout=12)
-        if response.status_code == 200:
-            return response.json().get("result", [])
-    except Exception as e:
-        print(f"⚠️ خطأ أثناء قراءة الرسائل: {e}")
+def load_data():
+    """تحميل البيانات (يمكنك ربطه بقاعدة بيانات أو ملف JSON المحلي)"""
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
     return []
 
-def handle_incoming_telegram_commands():
-    """الاستماع لأوامر الجوال المباشرة وتنفيذ خط الإنتاج فوراً"""
-    # استيراد الملف كاملاً لتفادي أخطاء المسميات والتعارض الدوري
-    import run_pipeline
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """رسالة الترحيب وأوامر البوت الأساسية"""
+    welcome_text = (
+        "اهلاً بك يا فنان! 🎬\n"
+        "أنا بوت إدارة وتدفق الفيديوهات الخاصة بنظام **رصين PRO**.\n\n"
+        "الأوامر المتاحة:\n"
+        "/pending - استعراض الفيديوهات الجاهزة للمراجعة والنشر 🚀"
+    )
+    await update.message.reply_text(welcome_text, parse_mode="Markdown")
+
+async def show_pending_videos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """جلب وعرض الفيديوهات الجاهزة للنشر من القائمة"""
+    # يمكنك تمرير البيانات هنا أو قراءتها مباشرة من القائمة التي زودتني بها
+    data = load_data()
     
-    offset = None
-    print("📱 [Telegram Control] البوت يستمع الآن لأوامرك من الجوال...")
+    # تصفية العناصر المنتجة والتي تمتلك فيديو نهائي
+    produced_videos = [
+        item for item in data 
+        if item.get("status") == "produced" or "videos/final_" in item.get("reason", "")
+    ]
 
-    while True:
-        updates = get_telegram_updates(offset)
-        for update in updates:
-            offset = update["update_id"] + 1
-            message = update.get("message", {})
-            text = message.get("text", "").strip()
-            chat_id = str(message.get("chat", {}).get("id"))
+    if not produced_videos:
+        await update.message.reply_text("لا توجد فيديوهات جاهزة حالياً في الانتظار. كل الأمور تحت السيطرة! ✨")
+        return
 
-            if CHAT_ID and chat_id != str(CHAT_ID):
-                continue
+    for item in produced_videos:
+        video_id = item.get("id")
+        title = item.get("title")
+        reason = item.get("reason", "")
+        
+        # استخراج مسار الفيديو من السبب إذا وجد
+        video_path = ""
+        for line in reason.split("\n"):
+            if "الفيديو النهائي:" in line:
+                video_path = line.split("الفيديو النهائي:")[1].strip()
 
-            if text:
-                print(f"\n📩 [طلب جديد من الجوال]: {text}")
-                
-                idea_title = text.replace("/create", "").strip()
-                if not idea_title or text == "/start":
-                    send_telegram_message(
-                        "👋 **أهلاً بك في نظام رصين PRO للتحكم الذكي**\n\n"
-                        "💡 أرسل لي أي فكرة مباشرة وسأقوم بإنتاجها ورفعها لـ TikTok Inbox فوراً!"
-                    )
-                    continue
+        caption = (
+            f"📌 **عنوان الفيديو:** {title}\n"
+            f"🆔 **المعرف:** {video_id}\n"
+            f"📊 **التقييم:** {item.get('score', 'N/A')}\n\n"
+            f"📝 *التفاصيل:* \n{reason}"
+        )
 
-                send_telegram_message(f"⚡ **[طلب يدوي مقبول]**\nجاري تشغيل خط الإنتاج لفكرتك:\n*{idea_title}*")
+        # أزرار التحكم التفاعلية
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ موافقة ونشر", callback_data=f"approve_{video_id}"),
+                InlineKeyboardButton("🔄 تعديل", callback_data=f"edit_{video_id}")
+            ],
+            [
+                InlineKeyboardButton("❌ رفض وحذف", callback_data=f"reject_{video_id}")
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
 
-                # التكيف مع اسم الدالة الموجودة في run_pipeline سواء كانت run_raseen_pipeline أو run_pipeline
-                pipeline_func = getattr(run_pipeline, 'run_raseen_pipeline', None) or getattr(run_pipeline, 'run_pipeline', None)
-                
-                pipeline_result = {}
-                if pipeline_func:
-                    pipeline_result = pipeline_func(
-                        topic_title=idea_title,
-                        raw_content=f"محتوى مخصص تم طلبه يدويًا من التلغرام: {idea_title}",
-                        source_platform="Telegram Direct Command",
-                        engagement_score=98,
-                        is_emergency=True
-                    )
+        # إرسال الفيديو إن وجد الملف محلياً، أو إرسال تفاصيله كبطاقة نصية
+        if video_path and os.path.exists(video_path):
+            with open(video_path, "rb") as video_file:
+                await context.bot.send_video(
+                    chat_id=update.effective_chat.id,
+                    video=video_file,
+                    caption=caption,
+                    parse_mode="Markdown",
+                    reply_markup=reply_markup
+                )
+        else:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=f"⚠️ (ملف الفيديو غير موجود محلياً)\n\n{caption}",
+                parse_mode="Markdown",
+                reply_markup=reply_markup
+            )
 
-                # توليد أصول الفيديو في حال عدم التوليد التلقائي
-                video_path = pipeline_result.get("video_path") if isinstance(pipeline_result, dict) else None
-                if not video_path:
-                    from video_engine.generator import VideoProductionEngine
-                    print("🎬 [Direct Trigger] جاري إنتاج أصول الفيديو مباشرة...")
-                    video_engine = VideoProductionEngine()
-                    prod_res = video_engine.generate_video_assets(script_title=idea_title, script_body=idea_title)
-                    video_path = prod_res.get("video_path")
+async def button_callback(context: ContextTypes.DEFAULT_TYPE, update: Update):
+    """التعامل مع ضغطات الأزرار من الجوال"""
+    query = update.callback_query
+    await query.answer()
+    
+    data_parts = query.data.split("_")
+    action = data_parts[0]
+    video_id = data_parts[1]
 
-                # الرفع الفعلي لـ TikTok Inbox
-                if video_path and os.path.exists(video_path):
-                    send_telegram_message("📤 جاري رفع الفيديو كمسودة إلى TikTok Inbox...")
-                    upload_success = upload_video_to_tiktok(video_path, title=idea_title, auto_publish=False)
-                    
-                    if upload_success:
-                        send_telegram_message(f"✅ **تم بنجاح!**\nتم رفع فيديو: *{idea_title}*\nتفقّد **TikTok Inbox** في حسابك الآن.")
-                    else:
-                        send_telegram_message("❌ حدث خطأ أثناء عملية الرفع إلى TikTok.")
-                else:
-                    send_telegram_message("❌ تعذر توليد ملف الفيديو، يرجى مراجعة سجل النظام.")
+    if action == "approve":
+        await query.edit_message_caption(
+            caption=f"{query.message.caption}\n\n✨ **الحالة:** تم الموافقة على النشر بنجاح! 🚀"
+        )
+        # هنا يمكنك إضافة كود الربط لمنصات النشر أو تشغيل الأتمتة عبر Make/n8n
+    elif action == "edit":
+        await query.message.reply_text(fللفيديو ذي المعرف #{video_id}. أرسل لي التعديل المطلوبة.")
+    elif action == "reject":
+        await query.edit_message_caption(
+            caption=f"{query.message.caption}\n\n❌ **الحالة:** تم رفض وحذف الفيديو."
+        )
+
+def main():
+    # بناء تطبيق البوت
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("pending", show_pending_videos))
+    app.add_handler(CallbackQueryHandler(button_callback))
+
+    print("🤖 بوت تيليجرام يعمل الآن بنجاح...")
+    app.run_polling()
 
 if __name__ == "__main__":
-    handle_incoming_telegram_commands()
+    # حفظ البيانات الواردة مؤقتاً لتسهيل القراءة للاختبار
+    if not os.path.exists(DATA_FILE):
+        sample_data = [...] # البيانات التي أرسلتها
+        # with open(DATA_FILE, "w", encoding="utf-8") as f:
+        #     json.dump(sample_data, f, ensure_ascii=False, indent=2)
+            
+    main()
