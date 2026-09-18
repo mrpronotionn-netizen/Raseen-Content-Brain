@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "C:\Users\mr\Desktop\Raseen Brain v0.2\Raseen-Content-Brain\main.py", line 15, in <module>
+    from run_pipeline import run_background_research, process_daily_scheduled_video
+  File "C:\Users\mr\Desktop\Raseen Brain v0.2\Raseen-Content-Brain\run_pipeline.py", line 10, in <module>
+    from memory.manager import MemoryManager
+ImportError: cannot import name 'MemoryManager' from 'memory.manager' (C:\Users\mr\Desktop\Raseen Brain v0.2\Raseen-Content-Brain\memory\manager.py)
