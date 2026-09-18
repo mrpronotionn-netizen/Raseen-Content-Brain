@@ -133,3 +133,11 @@ def main():
 
 if __name__ == "__main__":
     main()
+    async def send_telegram_message(text, chat_id=None, token=None):
+    """دالة مساعدة متوافقة مع استدعاءات main.py"""
+    import telegram
+    bot_token = token or TELEGRAM_TOKEN
+    target_chat = chat_id or "1719115694"
+    bot = telegram.Bot(token=bot_token)
+    async with bot:
+        await bot.send_message(chat_id=target_chat, text=text, parse_mode="Markdown")
