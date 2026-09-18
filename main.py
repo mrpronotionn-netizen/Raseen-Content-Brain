@@ -10,7 +10,6 @@ from flask import Flask, request
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
 
-from telegram_bot import send_telegram_message
 import run_pipeline
 from video_engine.generator import VideoProductionEngine
 from tiktok_uploader import upload_video_to_tiktok
@@ -18,12 +17,29 @@ from tiktok_uploader import upload_video_to_tiktok
 load_dotenv()
 
 TOKEN = "8960674717:AAFvKIoHB4Ajz7h2rt2sqO2tDRFkipbkinw"
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "1719115694")
 
 app = Flask(__name__)
 
 TEMP_STORAGE = {"latest_video_path": None, "latest_title": None, "waiting_for_edit": False}
 PROCESSED_UPDATES = set()
+
+def send_telegram_message(text, chat_id=None, token=None):
+    """دالة إرسال محلية داخل main.py لمنع مشاكل الاستيراد نهائياً"""
+    bot_token = token or TOKEN
+    target_chat = chat_id or CHAT_ID
+    if not target_chat:
+        return
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = {
+        "chat_id": target_chat,
+        "text": text,
+        "parse_mode": "Markdown"
+    }
+    try:
+        requests.post(url, json=payload)
+    except Exception as e:
+        print(f"⚠️ Telegram Send Error: {e}")
 
 @app.route('/')
 def home():
