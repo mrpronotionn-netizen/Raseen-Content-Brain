@@ -28,7 +28,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def show_pending_videos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """جلب وعرض الفيديوهات الجاهزة للنشر من القائمة"""
-    # يمكنك تمرير البيانات هنا أو قراءتها مباشرة من القائمة التي زودتني بها
     data = load_data()
     
     # تصفية العناصر المنتجة والتي تمتلك فيديو نهائي
@@ -89,7 +88,7 @@ async def show_pending_videos(update: Update, context: ContextTypes.DEFAULT_TYPE
                 reply_markup=reply_markup
             )
 
-async def button_callback(context: ContextTypes.DEFAULT_TYPE, update: Update):
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """التعامل مع ضغطات الأزرار من الجوال"""
     query = update.callback_query
     await query.answer()
@@ -104,7 +103,7 @@ async def button_callback(context: ContextTypes.DEFAULT_TYPE, update: Update):
         )
         # هنا يمكنك إضافة كود الربط لمنصات النشر أو تشغيل الأتمتة عبر Make/n8n
     elif action == "edit":
-        await query.message.reply_text(fللفيديو ذي المعرف #{video_id}. أرسل لي التعديل المطلوبة.")
+        await query.message.reply_text(f"للفيديو ذي المعرف #{video_id}. أرسل لي التعديل المطلوب.")
     elif action == "reject":
         await query.edit_message_caption(
             caption=f"{query.message.caption}\n\n❌ **الحالة:** تم رفض وحذف الفيديو."
@@ -122,10 +121,4 @@ def main():
     app.run_polling()
 
 if __name__ == "__main__":
-    # حفظ البيانات الواردة مؤقتاً لتسهيل القراءة للاختبار
-    if not os.path.exists(DATA_FILE):
-        sample_data = [...] # البيانات التي أرسلتها
-        # with open(DATA_FILE, "w", encoding="utf-8") as f:
-        #     json.dump(sample_data, f, ensure_ascii=False, indent=2)
-            
     main()
