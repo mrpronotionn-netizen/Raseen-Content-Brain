@@ -1,20 +1,32 @@
 import os
 import json
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler
 
-# استبدل هذا بالتوكن الخاص ببوك تيليجرام الخاص بك
-TELEGRAM_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
+# التوكن ومعرف المحادثة الخاص بك
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8960674717:AAHvKloB4Ajz7h2rt2sqO2tDRFkipbkinw")
+DEFAULT_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "1719115694")
 
 # مسار ملف البيانات أو قائمة العناصر المرسلة
 DATA_FILE = "videos_data.json"
 
 def load_data():
-    """تحميل البيانات (يمكنك ربطه بقاعدة بيانات أو ملف JSON المحلي)"""
+    """تحميل البيانات من ملف JSON المحلي"""
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            try:
+                return json.load(f)
+            except json.JSONDecodeError:
+                return []
     return []
+
+async def send_telegram_message(text, chat_id=None, token=None):
+    """دالة مساعدة لإرسال الرسائل النصية عند طلبها من أي ملف آخر (مثل main.py)"""
+    bot_token = token or TELEGRAM_TOKEN
+    target_chat = chat_id or DEFAULT_CHAT_ID
+    bot = Bot(token=bot_token)
+    async with bot:
+        await bot.send_message(chat_id=target_chat, text=text, parse_mode="Markdown")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """رسالة الترحيب وأوامر البوت الأساسية"""
@@ -101,7 +113,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_caption(
             caption=f"{query.message.caption}\n\n✨ **الحالة:** تم الموافقة على النشر بنجاح! 🚀"
         )
-        # هنا يمكنك إضافة كود الربط لمنصات النشر أو تشغيل الأتمتة عبر Make/n8n
     elif action == "edit":
         await query.message.reply_text(f"للفيديو ذي المعرف #{video_id}. أرسل لي التعديل المطلوب.")
     elif action == "reject":
