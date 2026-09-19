@@ -6,3 +6,6 @@
 secrets.json
 config/local
 tiktok_tokens.json
+# ملفات بايثون المؤقتة
+__pycache__/
+*.pyc
