@@ -1,0 +1,7 @@
+# ملفات البيئة والمفاتيح
+.env
+.env.*
+*.key
+*.pem
+secrets.json
+config/local
